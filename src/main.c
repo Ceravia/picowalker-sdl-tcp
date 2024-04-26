@@ -351,10 +351,10 @@ struct audio_buffer_t {
 };
 
 void add_note(struct audio_buffer_t* audio_buffer, uint8_t period, uint16_t duration) {
-    size_t period_samples = (AUDIO_SAMPLE_RATE / 32768) * period;
-    size_t dur_samples = (AUDIO_SAMPLE_RATE / 32768) * duration;
+    double period_samples = (AUDIO_SAMPLE_RATE / 65536.0) * period;
+    size_t dur_samples = (AUDIO_SAMPLE_RATE / 32768.0) * duration;
     size_t old_size = audio_buffer->size;
-    size_t new_size = old_size + sizeof(int16_t)*duration;
+    size_t new_size = old_size + sizeof(int16_t)*dur_samples;
     if (old_size > 0) {
         audio_buffer->data = realloc(audio_buffer->data, new_size);
     } else {
@@ -364,7 +364,7 @@ void add_note(struct audio_buffer_t* audio_buffer, uint8_t period, uint16_t dura
 
     int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
     for (size_t i = 0; i < dur_samples; i++) {
-         audio_it[i] = pw_audio_volume * pw_audio_volume * (8191 * ((i / period_samples) % 2) - 8191); // square wave, quadratic volume
+         audio_it[i] = pw_audio_volume * pw_audio_volume * (8191 * ((int)(i / period_samples) % 2) - 8191); // square wave, quadratic volume
     }
 }
 

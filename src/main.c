@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <time.h>
 #ifdef WIN32
 #define _WIN32_WINNT 0x0500
@@ -20,6 +21,8 @@
 
 SDL_Window *window;
 SDL_Renderer *renderer;
+
+SDL_AudioDeviceID audio_dev;
 
 uint32_t uncounted_steps = 0;
 
@@ -98,6 +101,10 @@ void check_event() {
  * void pw_screen_clear_area()
  * void pw_screen_draw_horiz_line()
  * void pw_screen_draw_text_box()
+ *
+ * ==== AUDIO
+ * void pw_audio_init()
+ * void pw_audio_play_sound(pw_sound_frame_t* sound_data, size_t sz)
  *
  * ==== FLASH
  * void pw_flash_read(pw_flash_img_t img_index, uint8_t *buf)
@@ -326,6 +333,113 @@ void pw_screen_draw_img(pw_img_t *img, screen_pos_t x, screen_pos_t y) {
     SDL_Rect rect = {.x=x, .y=y, .w=img->width, .h=img->height};
     SDL_RenderCopy(renderer, tex, NULL, &rect); // NULL = use whole texture
     SDL_RenderPresent(renderer);
+}
+
+#define AUDIO_SAMPLE_RATE 44100
+
+const SDL_AudioSpec desired_audio_spec = (const SDL_AudioSpec) {
+    .freq = AUDIO_SAMPLE_RATE,
+    .format = AUDIO_S16SYS,
+    .channels = 1,
+    .samples = 1024,
+    .callback = NULL,
+};
+
+struct audio_buffer_t {
+    void* data;
+    size_t size; // in bytes
+};
+
+void add_note(struct audio_buffer_t* audio_buffer, uint8_t period, uint16_t duration) {
+    double period_samples = (AUDIO_SAMPLE_RATE / 65536.0) * period;
+    size_t dur_samples = (AUDIO_SAMPLE_RATE / 32768.0) * duration;
+    size_t old_size = audio_buffer->size;
+    size_t new_size = old_size + sizeof(int16_t)*dur_samples;
+    if (old_size > 0) {
+        audio_buffer->data = realloc(audio_buffer->data, new_size);
+    } else {
+        audio_buffer->data = malloc(new_size);
+    }
+    audio_buffer->size = new_size;
+
+    int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
+    for (size_t i = 0; i < dur_samples; i++) {
+         audio_it[i] = pw_audio_volume * pw_audio_volume * (8191 * ((int)(i / period_samples) % 2) - 8191); // square wave, quadratic volume
+    }
+}
+
+void add_silence(struct audio_buffer_t* audio_buffer, uint16_t samples) {
+    size_t old_size = audio_buffer->size;
+    size_t new_size = old_size + sizeof(int16_t)*samples;
+    if (old_size > 0) {
+        audio_buffer->data = realloc(audio_buffer->data, new_size);
+    } else {
+        audio_buffer->data = malloc(new_size);
+    }
+    audio_buffer->size = new_size;
+
+    int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
+    for (size_t i = 0; i < samples; i++) {
+         audio_it[i] = 0;
+    }
+}
+
+void pw_audio_init() {
+    audio_dev = SDL_OpenAudioDevice(NULL, 0, &desired_audio_spec, NULL, 0); 
+    if (audio_dev == 0)
+        fprintf(stderr, "SDL audio device failed to initialise: %s\n", SDL_GetError());
+}
+
+void pw_audio_play_sound_data(const pw_sound_frame_t* sound_data, size_t sz) {
+    if (pw_audio_volume == VOLUME_NONE) return;
+
+    SDL_PauseAudioDevice(audio_dev, 0);
+    struct audio_buffer_t audio_buffer;
+    audio_buffer.size = 0;
+
+    uint8_t SH;
+    for (pw_sound_frame_t* sound_frame = sound_data; sound_frame < sound_data + sz; sound_frame++) {
+        uint8_t info = sound_frame->info;
+        uint8_t idx = sound_frame->period_idx;
+
+        if (idx == 0x7b) {
+            // Signifies start of sound data
+            SH = info;
+            continue;
+	}
+        if (idx == 0x7f) {
+            // Signifies end of sound data
+            break;
+	}
+        if (idx == 0x7d) {
+            printf("WARN %x commands are not yet handled correctly\n", idx);
+            continue;
+	}
+
+	bool negative = idx > 0x80;
+	uint16_t dur;
+        if (negative) {
+            dur = ((0x14000 * info / SH));
+	} else {
+            dur = ((0x14000 * info / SH) - 0x140);
+	}
+
+	uint8_t period = PW_AUDIO_PERIODTAB[idx & 0x7f];
+
+	add_note(&audio_buffer, period, dur);
+	if (!negative) {
+            add_silence(&audio_buffer, 300);
+	}
+    }
+
+    SDL_QueueAudio(audio_dev, audio_buffer.data, audio_buffer.size);
+    if (audio_buffer.size > 0)
+        free(audio_buffer.data);
+}
+
+
+bool pw_audio_is_playing_sound() {
+  return SDL_GetQueuedAudioSize(audio_dev) != 0;
 }
 
 

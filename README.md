@@ -15,7 +15,7 @@ Thank you for your time!
 
 
 
-##Original README from https://github.com/mamba2410/picowalker-sdl
+## Original README from https://github.com/mamba2410/picowalker-sdl
 
 Cross-platform SDL implementation of the picowalker stuffs.
 

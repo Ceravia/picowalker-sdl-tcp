@@ -4,6 +4,7 @@ project(picowalker-sdl)
 add_executable(picowalker-sdl
     src/main.c
     src/picowalker-defs.h
+    src/compatibility.c
 )
 
 find_package(SDL2 CONFIG REQUIRED)

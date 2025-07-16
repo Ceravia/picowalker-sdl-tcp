@@ -15,6 +15,12 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 
+#include <arpa/inet.h>
+#include <fcntl.h>
+#define PORT 8081
+
+int sock = 0;
+
 #include "picowalker-defs.h"
 
 #define PW_SCALE 10
@@ -124,22 +130,170 @@ void check_event() {
  * ==== ACCEL
  * int8_t pw_accel_init()
  * uint32_t pw_accel_get_new_steps()
+ *
+ *
+ *
+ *
+ * =====NEW
+ * 
+ *pw_time_set_rtc
+ *pw_time_delay_ms
+ *
+ *
+ *
  */
 
-void pw_button_init() {}
-void pw_ir_init() {}
-int pw_ir_read(uint8_t *buf, size_t len) {
-    return 0;
-}
-int pw_ir_write(uint8_t *buf, size_t len) {
-    return 0;
-}
 uint64_t pw_now_us() {
     struct timespec ts;
     (void)timespec_get(&ts, TIME_UTC);
     uint64_t us = ts.tv_sec*1000000 + ts.tv_nsec/1000;
     return us;
 }
+
+
+int skip = 0;
+void pw_button_init() {}
+void pw_ir_init() {}
+int pw_ir_read(uint8_t *buf, size_t len) {
+    printf("Trying to read with size %zu of size %d \n", len, sizeof(buf));
+    if (skip == 0){
+        skip = 1;
+        return 0;    
+    }
+    int lentmp = -1;
+
+
+    while(lentmp == -1){
+        lentmp = read(sock, buf, sizeof(buf));
+
+	    if (lentmp > 0){
+	        int lentmp2 = 0;
+	        char tmpBuf[0xB8];
+	        while(true){
+            	lentmp2 = read(sock, tmpBuf, sizeof(tmpBuf));
+
+		        if (lentmp2 < 1) break;
+		        for (int i = 0; i < lentmp2; i++){
+			        buf[i + lentmp] = tmpBuf[i];
+
+
+		    }
+
+
+		    lentmp = lentmp + lentmp2;
+            break;
+
+	        }
+	    }
+    }
+    
+    
+    
+    
+/*
+    char tempBuf[0xB8];
+    int lentmp = read(sock, tempBuf, sizeof(tempBuf));
+    uint8_t pointer = 0;
+
+    uint64_t lastRxTime = 0;
+    lastRxTime = pw_now_us();
+
+    if (len >0){
+	lastRxTime = pw_now_us();
+	for(int i = 0; i < len; i ++){
+
+		buf[pointer+i] = tempBuf[i];
+	}
+	pointer = pointer + lentmp;
+	while((pw_now_us() - lastRxTime) < 3500){
+		lentmp = read(sock, tempBuf, sizeof(tempBuf));
+		if (len < 0) continue;
+		else{
+			lastRxTime = pw_now_us();
+			for(int i = 0; i < len; i++){
+				buf[pointer + i] = tempBuf[i];
+			}
+			pointer = pointer + len;
+		}
+	}
+
+    }
+
+    if (pointer == 0) return 0;
+*/
+
+    //Need to read until expected packet length is reached? We could also just wait for time, but whatever
+
+
+    /*
+    printf("Read %d bytes\n", lentmp);
+    printf("Buffer contents: ");
+    for (size_t i = 0; i < lentmp; ++i) {
+        printf("%02X ", buf[i]^0xaa);
+    }
+    printf("\n");
+    */
+
+    return lentmp;
+    //return pointer;
+}
+int pw_ir_write(uint8_t *buf, size_t len) {
+
+    printf("Attempting to write %zu bytes\n", len);
+    printf("Buffer contents: ");
+    for (size_t i = 0; i < len; ++i) {
+        printf("%02X ", buf[i]^0xaa);
+    }
+    printf("\n");
+
+ 
+    int bytes_sent = send(sock, buf, len, 0);
+/*
+    if (bytes_sent == -1) {
+        perror("send failed\n");
+        // Handle the error appropriately, e.g., retry or exit
+    }
+   else{printf("finished send\n");}
+*/
+    return len;
+
+
+
+}
+
+
+void pw_ir_sleep(void) {
+    printf("COMMS SLEEP\n");
+    printf("Flushing tcp buffer...\n");
+    char tmpBuf[0xB8];
+    while (true){
+
+        if (read(sock, tmpBuf, sizeof(tmpBuf)) == -1) break;
+        else printf("flushed some data\n");
+    }
+    printf("Flush complete");
+}
+
+
+void pw_ir_wake(void) {
+    printf("COMMS WAKE\n");
+    printf("Flushing tcp buffer...\n");
+    char tmpBuf[0xB8];
+    while (true){
+
+        if (read(sock, tmpBuf, sizeof(tmpBuf)) == -1) break;
+        else printf("flushed some data\n");
+    }
+    printf("Flush complete");
+}
+
+
+
+
+
+
+
+
 void pw_ir_delay_ms(uint64_t ms) {
 #ifdef WIN32
     Sleep(ms);
@@ -362,7 +516,7 @@ void add_note(struct audio_buffer_t* audio_buffer, uint8_t period, uint16_t dura
     }
     audio_buffer->size = new_size;
 
-    int16_t* audio_it = (int16_t * ) ((uint8_t*)audio_buffer->data + old_size);
+    int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
     for (size_t i = 0; i < dur_samples; i++) {
          audio_it[i] = pw_audio_volume * pw_audio_volume * (8191 * ((int)(i / period_samples) % 2) - 8191); // square wave, quadratic volume
     }
@@ -378,19 +532,19 @@ void add_silence(struct audio_buffer_t* audio_buffer, uint16_t samples) {
     }
     audio_buffer->size = new_size;
 
-    int16_t* audio_it = (int16_t * ) ((uint8_t*)audio_buffer->data + old_size);
+    int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
     for (size_t i = 0; i < samples; i++) {
          audio_it[i] = 0;
     }
 }
 
 void pw_audio_init() {
-    audio_dev = SDL_OpenAudioDevice(NULL, 0, &desired_audio_spec, NULL, 0);
+    audio_dev = SDL_OpenAudioDevice(NULL, 0, &desired_audio_spec, NULL, 0); 
     if (audio_dev == 0)
         fprintf(stderr, "SDL audio device failed to initialise: %s\n", SDL_GetError());
 }
 
-void pw_audio_play_sound_data(pw_sound_frame_t* sound_data, size_t sz) {
+void pw_audio_play_sound_data(const pw_sound_frame_t* sound_data, size_t sz) {
     if (pw_audio_volume == VOLUME_NONE) return;
 
     SDL_PauseAudioDevice(audio_dev, 0);
@@ -455,10 +609,50 @@ void pw_flash_read(uint8_t *buf, size_t len) {
     fclose(f);
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
 // ========================================================================================================
-extern void walker_setup();
-extern void walker_loop();
+
 int main(int argc, char** argv) {
+//BARRET ADD TCP
+
+    struct sockaddr_in serv_addr;
+    char *hello = "bbbbb";
+    char buffer[1024] = {0};
+
+    // Create socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        printf("\n Socket creation error \n");
+        return -1;
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+
+    // Convert IPv4 and IPv6 addresses from text to binary form
+    if(inet_pton(AF_INET, "192.168.5.37", &serv_addr.sin_addr) <= 0) {
+        printf("\nInvalid address/ Address not supported \n");
+        return -1;
+    }
+
+    // Connect to server
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        printf("\nConnection Failed \n");
+        return -1;
+    }
+    fcntl(sock, F_SETFL, fcntl(sock, F_GETFL,0) | O_NONBLOCK);
+
+//BARRET END TCP
 
 
     SDL_SetMainReady();
@@ -501,10 +695,9 @@ int main(int argc, char** argv) {
         walker_loop();
         check_event();
     }
-
+    close(sock);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
     return 0;
 }
-

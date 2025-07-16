@@ -17,7 +17,6 @@
 
 #include <arpa/inet.h>
 #include <fcntl.h>
-#define PORT 8081
 
 int sock = 0;
 
@@ -263,12 +262,12 @@ int pw_ir_write(uint8_t *buf, size_t len) {
 
 
 void pw_ir_sleep(void) {
-    printf("COMMS SLEEP\n");
+    //printf("COMMS SLEEP\n");
     printf("Flushing tcp buffer...\n");
     char tmpBuf[0xB8];
     while (true){
 
-        if (read(sock, tmpBuf, sizeof(tmpBuf)) == -1) break;
+        if (read(sock, tmpBuf, sizeof(tmpBuf)) <= 0) break;
         else printf("flushed some data\n");
     }
     printf("Flush complete");
@@ -281,7 +280,7 @@ void pw_ir_wake(void) {
     char tmpBuf[0xB8];
     while (true){
 
-        if (read(sock, tmpBuf, sizeof(tmpBuf)) == -1) break;
+        if (read(sock, tmpBuf, sizeof(tmpBuf)) <= 0) break;
         else printf("flushed some data\n");
     }
     printf("Flush complete");
@@ -627,10 +626,22 @@ extern void walker_loop();
 
 
 int main(int argc, char** argv) {
-//BARRET ADD TCP
+//START TCP UNIQUE CODE
+
+    if (argc != 3){
+        fprintf(stderr, "Usage: %s <IP_ADDRESS> <PORT>\n", argv[0]);
+        return 1;
+    }
+
+
+    const char *ip =argv[1];
+    int port = atoi(argv[2]);
+
+
+
+
 
     struct sockaddr_in serv_addr;
-    char *hello = "bbbbb";
     char buffer[1024] = {0};
 
     // Create socket
@@ -640,10 +651,10 @@ int main(int argc, char** argv) {
     }
 
     serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
+    serv_addr.sin_port = htons(port);
 
     // Convert IPv4 and IPv6 addresses from text to binary form
-    if(inet_pton(AF_INET, "192.168.5.37", &serv_addr.sin_addr) <= 0) {
+    if(inet_pton(AF_INET, ip, &serv_addr.sin_addr) <= 0) {
         printf("\nInvalid address/ Address not supported \n");
         return -1;
     }
@@ -655,7 +666,7 @@ int main(int argc, char** argv) {
     }
     fcntl(sock, F_SETFL, fcntl(sock, F_GETFL,0) | O_NONBLOCK);
 
-//BARRET END TCP
+//END TCP
 
 
     SDL_SetMainReady();

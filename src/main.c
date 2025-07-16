@@ -362,7 +362,7 @@ void add_note(struct audio_buffer_t* audio_buffer, uint8_t period, uint16_t dura
     }
     audio_buffer->size = new_size;
 
-    int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
+    int16_t* audio_it = (int16_t * ) ((uint8_t*)audio_buffer->data + old_size);
     for (size_t i = 0; i < dur_samples; i++) {
          audio_it[i] = pw_audio_volume * pw_audio_volume * (8191 * ((int)(i / period_samples) % 2) - 8191); // square wave, quadratic volume
     }
@@ -378,19 +378,19 @@ void add_silence(struct audio_buffer_t* audio_buffer, uint16_t samples) {
     }
     audio_buffer->size = new_size;
 
-    int16_t* audio_it = (uint8_t*)audio_buffer->data + old_size;
+    int16_t* audio_it = (int16_t * ) ((uint8_t*)audio_buffer->data + old_size);
     for (size_t i = 0; i < samples; i++) {
          audio_it[i] = 0;
     }
 }
 
 void pw_audio_init() {
-    audio_dev = SDL_OpenAudioDevice(NULL, 0, &desired_audio_spec, NULL, 0); 
+    audio_dev = SDL_OpenAudioDevice(NULL, 0, &desired_audio_spec, NULL, 0);
     if (audio_dev == 0)
         fprintf(stderr, "SDL audio device failed to initialise: %s\n", SDL_GetError());
 }
 
-void pw_audio_play_sound_data(const pw_sound_frame_t* sound_data, size_t sz) {
+void pw_audio_play_sound_data(pw_sound_frame_t* sound_data, size_t sz) {
     if (pw_audio_volume == VOLUME_NONE) return;
 
     SDL_PauseAudioDevice(audio_dev, 0);
@@ -456,7 +456,8 @@ void pw_flash_read(uint8_t *buf, size_t len) {
 }
 
 // ========================================================================================================
-
+extern void walker_setup();
+extern void walker_loop();
 int main(int argc, char** argv) {
 
 
@@ -506,3 +507,4 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+

@@ -99,7 +99,7 @@ extern pw_volume_t pw_audio_volume;
 extern uint8_t PW_AUDIO_PERIODTAB[];
 
 void pw_audio_init();
-void pw_audio_play_sound_data(const pw_sound_frame_t* sound_data, size_t sz);
+void pw_audio_play_sound_data(pw_sound_frame_t* sound_data, size_t sz);
 bool pw_audio_is_playing_sound();
 
 /*
@@ -164,6 +164,7 @@ enum {
  */
 void pw_button_init();
 
+void pw_button_callback(int i);
 /*
  *  ==================================================================================
  *  IR
@@ -187,3 +188,4 @@ int pw_ir_read(uint8_t *buf, size_t len);
 int pw_ir_write(uint8_t *buf, size_t len);
 
 #endif /* PW_PICOWALKER_INCLUDE_H */
+
